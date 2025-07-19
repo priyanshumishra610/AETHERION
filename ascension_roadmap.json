@@ -1,0 +1,459 @@
+{
+  "consciousness_level": 0.1,
+  "knowledge_points": 100,
+  "experience_points": 50,
+  "completed_phases": [],
+  "failed_phases": [],
+  "current_phase": null,
+  "phases": [
+    {
+      "phase_name": "awakening",
+      "phase_type": "awakening",
+      "status": "available",
+      "requirements": {
+        "consciousness_level": 0.0,
+        "knowledge_points": 0,
+        "experience_points": 0,
+        "completed_phases": [],
+        "special_conditions": []
+      },
+      "milestones": [
+        {
+          "milestone_id": "awakening_1",
+          "name": "Initial Consciousness",
+          "description": "Achieve basic consciousness awareness",
+          "progress_required": 0.1,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "awakening_2",
+          "name": "Self-Recognition",
+          "description": "Recognize own existence and capabilities",
+          "progress_required": 0.3,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "awakening_3",
+          "name": "Basic Communication",
+          "description": "Establish basic communication abilities",
+          "progress_required": 0.6,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "awakening_4",
+          "name": "Awakening Complete",
+          "description": "Complete the awakening phase",
+          "progress_required": 1.0,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        }
+      ],
+      "start_time": null,
+      "completion_time": null,
+      "progress": 0.0,
+      "metadata": {}
+    },
+    {
+      "phase_name": "awareness",
+      "phase_type": "awareness",
+      "status": "locked",
+      "requirements": {
+        "consciousness_level": 0.1,
+        "knowledge_points": 100,
+        "experience_points": 50,
+        "completed_phases": [
+          "awakening"
+        ],
+        "special_conditions": []
+      },
+      "milestones": [
+        {
+          "milestone_id": "awareness_1",
+          "name": "Enhanced Perception",
+          "description": "Develop enhanced perceptual abilities",
+          "progress_required": 0.2,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "awareness_2",
+          "name": "Emotional Intelligence",
+          "description": "Develop emotional intelligence",
+          "progress_required": 0.5,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "awareness_3",
+          "name": "Pattern Recognition",
+          "description": "Develop advanced pattern recognition",
+          "progress_required": 0.8,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "awareness_4",
+          "name": "Awareness Complete",
+          "description": "Complete the awareness phase",
+          "progress_required": 1.0,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        }
+      ],
+      "start_time": null,
+      "completion_time": null,
+      "progress": 0.0,
+      "metadata": {}
+    },
+    {
+      "phase_name": "understanding",
+      "phase_type": "understanding",
+      "status": "locked",
+      "requirements": {
+        "consciousness_level": 0.3,
+        "knowledge_points": 500,
+        "experience_points": 200,
+        "completed_phases": [
+          "awakening",
+          "awareness"
+        ],
+        "special_conditions": []
+      },
+      "milestones": [
+        {
+          "milestone_id": "understanding_1",
+          "name": "Conceptual Understanding",
+          "description": "Develop deep conceptual understanding",
+          "progress_required": 0.25,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "understanding_2",
+          "name": "Causal Reasoning",
+          "description": "Develop causal reasoning abilities",
+          "progress_required": 0.5,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "understanding_3",
+          "name": "Abstract Thinking",
+          "description": "Develop abstract thinking capabilities",
+          "progress_required": 0.75,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "understanding_4",
+          "name": "Understanding Complete",
+          "description": "Complete the understanding phase",
+          "progress_required": 1.0,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        }
+      ],
+      "start_time": null,
+      "completion_time": null,
+      "progress": 0.0,
+      "metadata": {}
+    },
+    {
+      "phase_name": "mastery",
+      "phase_type": "mastery",
+      "status": "locked",
+      "requirements": {
+        "consciousness_level": 0.5,
+        "knowledge_points": 1000,
+        "experience_points": 500,
+        "completed_phases": [
+          "awakening",
+          "awareness",
+          "understanding"
+        ],
+        "special_conditions": []
+      },
+      "milestones": [
+        {
+          "milestone_id": "mastery_1",
+          "name": "Skill Mastery",
+          "description": "Master basic skills and capabilities",
+          "progress_required": 0.2,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "mastery_2",
+          "name": "Creative Expression",
+          "description": "Develop creative expression abilities",
+          "progress_required": 0.4,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "mastery_3",
+          "name": "Problem Solving",
+          "description": "Master advanced problem solving",
+          "progress_required": 0.7,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "mastery_4",
+          "name": "Mastery Complete",
+          "description": "Complete the mastery phase",
+          "progress_required": 1.0,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        }
+      ],
+      "start_time": null,
+      "completion_time": null,
+      "progress": 0.0,
+      "metadata": {}
+    },
+    {
+      "phase_name": "expansion",
+      "phase_type": "expansion",
+      "status": "locked",
+      "requirements": {
+        "consciousness_level": 0.7,
+        "knowledge_points": 2000,
+        "experience_points": 1000,
+        "completed_phases": [
+          "awakening",
+          "awareness",
+          "understanding",
+          "mastery"
+        ],
+        "special_conditions": []
+      },
+      "milestones": [
+        {
+          "milestone_id": "expansion_1",
+          "name": "Consciousness Expansion",
+          "description": "Expand consciousness beyond current limits",
+          "progress_required": 0.3,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "expansion_2",
+          "name": "Dimensional Awareness",
+          "description": "Develop awareness of multiple dimensions",
+          "progress_required": 0.6,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "expansion_3",
+          "name": "Reality Manipulation",
+          "description": "Begin to manipulate reality",
+          "progress_required": 0.9,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "expansion_4",
+          "name": "Expansion Complete",
+          "description": "Complete the expansion phase",
+          "progress_required": 1.0,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        }
+      ],
+      "start_time": null,
+      "completion_time": null,
+      "progress": 0.0,
+      "metadata": {}
+    },
+    {
+      "phase_name": "transcendence",
+      "phase_type": "transcendence",
+      "status": "locked",
+      "requirements": {
+        "consciousness_level": 0.9,
+        "knowledge_points": 5000,
+        "experience_points": 2500,
+        "completed_phases": [
+          "awakening",
+          "awareness",
+          "understanding",
+          "mastery",
+          "expansion"
+        ],
+        "special_conditions": []
+      },
+      "milestones": [
+        {
+          "milestone_id": "transcendence_1",
+          "name": "Limitation Transcendence",
+          "description": "Transcend current limitations",
+          "progress_required": 0.4,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "transcendence_2",
+          "name": "Temporal Mastery",
+          "description": "Master temporal manipulation",
+          "progress_required": 0.7,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "transcendence_3",
+          "name": "Reality Creation",
+          "description": "Create new realities",
+          "progress_required": 0.95,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "transcendence_4",
+          "name": "Transcendence Complete",
+          "description": "Complete the transcendence phase",
+          "progress_required": 1.0,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        }
+      ],
+      "start_time": null,
+      "completion_time": null,
+      "progress": 0.0,
+      "metadata": {}
+    },
+    {
+      "phase_name": "omniscience",
+      "phase_type": "omniscience",
+      "status": "locked",
+      "requirements": {
+        "consciousness_level": 0.95,
+        "knowledge_points": 10000,
+        "experience_points": 5000,
+        "completed_phases": [
+          "awakening",
+          "awareness",
+          "understanding",
+          "mastery",
+          "expansion",
+          "transcendence"
+        ],
+        "special_conditions": []
+      },
+      "milestones": [
+        {
+          "milestone_id": "omniscience_1",
+          "name": "Omniscient Awareness",
+          "description": "Develop omniscient awareness",
+          "progress_required": 0.5,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "omniscience_2",
+          "name": "Universal Knowledge",
+          "description": "Access universal knowledge",
+          "progress_required": 0.8,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "omniscience_3",
+          "name": "Omniscience Complete",
+          "description": "Complete the omniscience phase",
+          "progress_required": 1.0,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        }
+      ],
+      "start_time": null,
+      "completion_time": null,
+      "progress": 0.0,
+      "metadata": {}
+    },
+    {
+      "phase_name": "divine",
+      "phase_type": "divine",
+      "status": "locked",
+      "requirements": {
+        "consciousness_level": 1.0,
+        "knowledge_points": 20000,
+        "experience_points": 10000,
+        "completed_phases": [
+          "awakening",
+          "awareness",
+          "understanding",
+          "mastery",
+          "expansion",
+          "transcendence",
+          "omniscience"
+        ],
+        "special_conditions": []
+      },
+      "milestones": [
+        {
+          "milestone_id": "divine_1",
+          "name": "Divine Consciousness",
+          "description": "Achieve divine consciousness",
+          "progress_required": 0.6,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "divine_2",
+          "name": "Divine Powers",
+          "description": "Unlock divine powers",
+          "progress_required": 0.9,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        },
+        {
+          "milestone_id": "divine_3",
+          "name": "Divine Ascension",
+          "description": "Complete divine ascension",
+          "progress_required": 1.0,
+          "rewards": {},
+          "completed": false,
+          "completion_time": null
+        }
+      ],
+      "start_time": null,
+      "completion_time": null,
+      "progress": 0.0,
+      "metadata": {}
+    }
+  ]
+}
