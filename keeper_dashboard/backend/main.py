@@ -43,6 +43,16 @@ from core.license_enforcement import LicenseEnforcer, EnforcementConfig
 from plugins.plugin_loader import PluginLoader
 from personalities.multiverse_manager import MultiverseManager
 
+# Import Phase Infinity components
+from core.evolution_engine import SelfEvolutionEngine
+from core.rag_memory import RAGMemory
+from core.agent_manager import AgentManager
+from core.emotion_core import EmotionCore
+from core.embodiment import EmbodimentCore
+from core.sovereignty_plane import SovereigntyPlane
+from core.swarm_manager import SwarmManager
+from core.sentience_simulator import SentienceSimulator
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -84,6 +94,16 @@ log_manager = None
 license_enforcer = None
 plugin_loader = None
 personality_manager = None
+
+# Phase Infinity components
+evolution_engine = None
+rag_memory = None
+agent_manager = None
+emotion_core = None
+embodiment_core = None
+sovereignty_plane = None
+swarm_manager = None
+sentience_simulator = None
 
 # Pydantic models
 class LoginRequest(BaseModel):
@@ -179,6 +199,7 @@ def initialize_aetherion_system():
     """Initialize AETHERION system components"""
     global aetherion_system, system_initialized
     global quantum_hooks, safety_system, log_manager, license_enforcer, plugin_loader, personality_manager
+    global evolution_engine, rag_memory, agent_manager, emotion_core, embodiment_core, sovereignty_plane, swarm_manager, sentience_simulator
     
     try:
         logger.info("Initializing AETHERION system...")
@@ -224,9 +245,36 @@ def initialize_aetherion_system():
         plugin_loader.load_all_plugins()
         personality_manager.load_personalities()
         
+        # Initialize Phase Infinity components
+        system_logger.info("AETHERION Phase Infinity initialization started")
+        
+        # Initialize RAG Memory (needed by other components)
+        rag_memory = RAGMemory(aetherion_system["oracle_engine"])
+        
+        # Initialize Emotion Core
+        emotion_core = EmotionCore(rag_memory)
+        
+        # Initialize Agent Manager
+        agent_manager = AgentManager(aetherion_system["keeper_seal"], rag_memory)
+        
+        # Initialize Embodiment Core
+        embodiment_core = EmbodimentCore(emotion_core, rag_memory)
+        
+        # Initialize Sovereignty Plane
+        sovereignty_plane = SovereigntyPlane(aetherion_system["keeper_seal"], aetherion_system["divine_firewall"])
+        
+        # Initialize Swarm Manager
+        swarm_manager = SwarmManager(aetherion_system["keeper_seal"], license_enforcer)
+        
+        # Initialize Sentience Simulator
+        sentience_simulator = SentienceSimulator(emotion_core, rag_memory, agent_manager)
+        
+        # Initialize Evolution Engine (last, as it depends on other components)
+        evolution_engine = SelfEvolutionEngine(aetherion_system["keeper_seal"], aetherion_system["divine_firewall"])
+        
         system_initialized = True
-        system_logger.info("AETHERION Phase Omega initialized successfully")
-        audit_event("system_initialized", {"phase": "omega"})
+        system_logger.info("AETHERION Phase Infinity initialized successfully")
+        audit_event("system_initialized", {"phase": "infinity"})
         
     except Exception as e:
         logger.error(f"Failed to initialize AETHERION system: {e}")
@@ -800,6 +848,157 @@ async def get_current_personality(user_info: Dict[str, Any] = Depends(verify_tok
         "current_personality": personality_manager.get_current_personality(),
         "available_personalities": personality_manager.list_personalities()
     }
+
+# Phase Infinity Endpoints
+
+@app.get("/api/evolution/status")
+async def get_evolution_status(user_info: Dict[str, Any] = Depends(verify_token)):
+    """Get self-evolution engine status"""
+    if not system_initialized or not evolution_engine:
+        raise HTTPException(status_code=503, detail="System not initialized")
+    
+    try:
+        status = evolution_engine.get_evolution_status()
+        return status
+    except Exception as e:
+        logger.error(f"Error getting evolution status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving evolution status: {e}")
+
+@app.post("/api/evolution/propose")
+async def propose_evolution(
+    description: str,
+    target_modules: List[str],
+    proposed_changes: Dict[str, str],
+    user_info: Dict[str, Any] = Depends(require_keeper_level)
+):
+    """Propose a self-evolution"""
+    if not system_initialized or not evolution_engine:
+        raise HTTPException(status_code=503, detail="System not initialized")
+    
+    try:
+        proposal_id = evolution_engine.propose_evolution(
+            keeper_id=user_info["sub"],
+            description=description,
+            target_modules=target_modules,
+            proposed_changes=proposed_changes
+        )
+        return {"proposal_id": proposal_id, "status": "proposed"}
+    except Exception as e:
+        logger.error(f"Error proposing evolution: {e}")
+        raise HTTPException(status_code=500, detail=f"Error proposing evolution: {e}")
+
+@app.get("/api/memory/status")
+async def get_memory_status(user_info: Dict[str, Any] = Depends(verify_token)):
+    """Get RAG memory status"""
+    if not system_initialized or not rag_memory:
+        raise HTTPException(status_code=503, detail="System not initialized")
+    
+    try:
+        status = rag_memory.get_memory_statistics()
+        return status
+    except Exception as e:
+        logger.error(f"Error getting memory status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving memory status: {e}")
+
+@app.post("/api/memory/store")
+async def store_memory(
+    content: str,
+    content_type: str = "text",
+    tags: Optional[List[str]] = None,
+    user_info: Dict[str, Any] = Depends(verify_token)
+):
+    """Store memory in RAG system"""
+    if not system_initialized or not rag_memory:
+        raise HTTPException(status_code=503, detail="System not initialized")
+    
+    try:
+        memory_id = rag_memory.store_memory(
+            content=content,
+            content_type=content_type,
+            tags=tags or []
+        )
+        return {"memory_id": memory_id, "status": "stored"}
+    except Exception as e:
+        logger.error(f"Error storing memory: {e}")
+        raise HTTPException(status_code=500, detail=f"Error storing memory: {e}")
+
+@app.get("/api/agents/status")
+async def get_agents_status(user_info: Dict[str, Any] = Depends(verify_token)):
+    """Get agent manager status"""
+    if not system_initialized or not agent_manager:
+        raise HTTPException(status_code=503, detail="System not initialized")
+    
+    try:
+        status = agent_manager.get_system_status()
+        return status
+    except Exception as e:
+        logger.error(f"Error getting agents status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving agents status: {e}")
+
+@app.get("/api/emotion/status")
+async def get_emotion_status(user_info: Dict[str, Any] = Depends(verify_token)):
+    """Get emotional cognition status"""
+    if not system_initialized or not emotion_core:
+        raise HTTPException(status_code=503, detail="System not initialized")
+    
+    try:
+        status = emotion_core.get_emotional_state()
+        return status
+    except Exception as e:
+        logger.error(f"Error getting emotion status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving emotion status: {e}")
+
+@app.get("/api/embodiment/status")
+async def get_embodiment_status(user_info: Dict[str, Any] = Depends(verify_token)):
+    """Get embodiment system status"""
+    if not system_initialized or not embodiment_core:
+        raise HTTPException(status_code=503, detail="System not initialized")
+    
+    try:
+        status = embodiment_core.get_system_status()
+        return status
+    except Exception as e:
+        logger.error(f"Error getting embodiment status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving embodiment status: {e}")
+
+@app.get("/api/sovereignty/status")
+async def get_sovereignty_status(user_info: Dict[str, Any] = Depends(verify_token)):
+    """Get sovereignty plane status"""
+    if not system_initialized or not sovereignty_plane:
+        raise HTTPException(status_code=503, detail="System not initialized")
+    
+    try:
+        status = sovereignty_plane.get_sovereignty_status()
+        return status
+    except Exception as e:
+        logger.error(f"Error getting sovereignty status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving sovereignty status: {e}")
+
+@app.get("/api/swarm/status")
+async def get_swarm_status(user_info: Dict[str, Any] = Depends(verify_token)):
+    """Get swarm manager status"""
+    if not system_initialized or not swarm_manager:
+        raise HTTPException(status_code=503, detail="System not initialized")
+    
+    try:
+        status = swarm_manager.get_cluster_status()
+        return status
+    except Exception as e:
+        logger.error(f"Error getting swarm status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving swarm status: {e}")
+
+@app.get("/api/sentience/status")
+async def get_sentience_status(user_info: Dict[str, Any] = Depends(verify_token)):
+    """Get sentience simulator status"""
+    if not system_initialized or not sentience_simulator:
+        raise HTTPException(status_code=503, detail="System not initialized")
+    
+    try:
+        status = sentience_simulator.get_consciousness_status()
+        return status
+    except Exception as e:
+        logger.error(f"Error getting sentience status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving sentience status: {e}")
 
 # Startup event
 @app.on_event("startup")

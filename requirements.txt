@@ -110,4 +110,40 @@ RPi.GPIO>=0.7.0
 click>=8.0.0
 rich>=12.0.0
 tqdm>=4.62.0
-colorama>=0.4.4 
+colorama>=0.4.4
+
+# Phase Infinity Dependencies
+# Vector Database for RAG Memory
+qdrant-client>=1.1.0
+sentence-transformers>=2.2.0
+
+# Speech Recognition & TTS
+vosk>=0.3.32
+openai-whisper>=20231117
+TTS>=0.13.0
+pyttsx3>=2.90
+pyaudio>=0.2.11
+
+# Audio Processing
+webrtcvad>=2.0.10
+sounddevice>=0.4.5
+
+# Advanced ML for Sentience Simulation
+torchaudio>=0.9.0
+torchvision>=0.10.0
+
+# Enhanced Monitoring & Analytics
+prometheus-client>=0.14.0
+grafana-api>=1.0.3
+
+# Advanced Task Orchestration
+celery[redis]>=5.2.0
+flower>=1.0.0
+
+# Enhanced Security & Cryptography
+pycryptodome>=3.15.0
+cryptography[fernet]>=3.4.0
+
+# System Integration
+psutil>=5.8.0
+py-cpuinfo>=8.0.0 
