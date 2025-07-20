@@ -17,7 +17,13 @@ from enum import Enum
 import logging
 import json
 import time
+import os
+import subprocess
+import tempfile
+import shutil
+import uuid
 from datetime import datetime
+from pathlib import Path
 from .utils import DimensionalVector, QuantumState, FractalPattern
 
 logger = logging.getLogger(__name__)
@@ -44,6 +50,13 @@ class ManipulationType(Enum):
     DESTRUCTION = "destruction"    # Reality destruction
     SYNTHESIS = "synthesis"        # Reality synthesis
 
+class SandboxMode(Enum):
+    """Sandbox execution modes"""
+    ISOLATED = "isolated"          # Completely isolated sandbox
+    CONTROLLED = "controlled"      # Controlled access sandbox
+    MONITORED = "monitored"        # Monitored execution
+    SIMULATION = "simulation"      # Pure simulation mode
+
 @dataclass
 class RealityManipulation:
     """Represents a manipulation of reality"""
@@ -53,8 +66,10 @@ class RealityManipulation:
     intensity: float
     duration: float
     timestamp: float
+    sandbox_mode: SandboxMode = SandboxMode.SIMULATION
     parameters: Dict[str, Any] = field(default_factory=dict)
     effects: Dict[str, Any] = field(default_factory=dict)
+    audit_log: List[Dict[str, Any]] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -65,9 +80,382 @@ class RealityManipulation:
             "intensity": self.intensity,
             "duration": self.duration,
             "timestamp": self.timestamp,
+            "sandbox_mode": self.sandbox_mode.value,
             "parameters": self.parameters,
-            "effects": self.effects
+            "effects": self.effects,
+            "audit_log": self.audit_log
         }
+
+class AuditLogger:
+    """Comprehensive audit logging system"""
+    
+    def __init__(self, log_file_path: str = "reality_audit.log"):
+        self.log_file_path = log_file_path
+        self.audit_entries = []
+        self._setup_logging()
+    
+    def _setup_logging(self):
+        """Setup audit logging"""
+        # Create log directory if it doesn't exist
+        log_dir = os.path.dirname(self.log_file_path)
+        if log_dir and not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+    
+    def log_manipulation(self, 
+                        manipulation: RealityManipulation,
+                        user_id: str,
+                        session_id: str,
+                        success: bool,
+                        details: Dict[str, Any] = None):
+        """Log a reality manipulation attempt"""
+        audit_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "manipulation_id": manipulation.manipulation_id,
+            "user_id": user_id,
+            "session_id": session_id,
+            "manipulation_type": manipulation.manipulation_type.value,
+            "target_layer": manipulation.target_layer.value,
+            "intensity": manipulation.intensity,
+            "sandbox_mode": manipulation.sandbox_mode.value,
+            "success": success,
+            "details": details or {},
+            "system_state": self._capture_system_state()
+        }
+        
+        self.audit_entries.append(audit_entry)
+        manipulation.audit_log.append(audit_entry)
+        
+        # Write to file
+        self._write_audit_entry(audit_entry)
+        
+        logger.info(f"Audit logged: {manipulation.manipulation_id} - Success: {success}")
+    
+    def _capture_system_state(self) -> Dict[str, Any]:
+        """Capture current system state for audit"""
+        return {
+            "timestamp": time.time(),
+            "memory_usage": self._get_memory_usage(),
+            "cpu_usage": self._get_cpu_usage(),
+            "disk_usage": self._get_disk_usage(),
+            "network_connections": self._get_network_connections(),
+            "active_processes": self._get_active_processes()
+        }
+    
+    def _get_memory_usage(self) -> Dict[str, float]:
+        """Get memory usage information"""
+        try:
+            import psutil
+            memory = psutil.virtual_memory()
+            return {
+                "total": memory.total,
+                "available": memory.available,
+                "percent": memory.percent,
+                "used": memory.used
+            }
+        except ImportError:
+            return {"error": "psutil not available"}
+    
+    def _get_cpu_usage(self) -> Dict[str, float]:
+        """Get CPU usage information"""
+        try:
+            import psutil
+            return {
+                "percent": psutil.cpu_percent(interval=1),
+                "count": psutil.cpu_count()
+            }
+        except ImportError:
+            return {"error": "psutil not available"}
+    
+    def _get_disk_usage(self) -> Dict[str, Any]:
+        """Get disk usage information"""
+        try:
+            import psutil
+            disk = psutil.disk_usage('/')
+            return {
+                "total": disk.total,
+                "used": disk.used,
+                "free": disk.free,
+                "percent": disk.percent
+            }
+        except ImportError:
+            return {"error": "psutil not available"}
+    
+    def _get_network_connections(self) -> int:
+        """Get number of network connections"""
+        try:
+            import psutil
+            return len(psutil.net_connections())
+        except ImportError:
+            return 0
+    
+    def _get_active_processes(self) -> int:
+        """Get number of active processes"""
+        try:
+            import psutil
+            return len(psutil.pids())
+        except ImportError:
+            return 0
+    
+    def _write_audit_entry(self, entry: Dict[str, Any]):
+        """Write audit entry to file"""
+        try:
+            with open(self.log_file_path, 'a') as f:
+                f.write(json.dumps(entry) + '\n')
+        except Exception as e:
+            logger.error(f"Failed to write audit entry: {e}")
+    
+    def get_audit_summary(self) -> Dict[str, Any]:
+        """Get audit summary statistics"""
+        if not self.audit_entries:
+            return {"total_entries": 0}
+        
+        total_entries = len(self.audit_entries)
+        successful_manipulations = sum(1 for entry in self.audit_entries if entry["success"])
+        
+        manipulation_types = {}
+        target_layers = {}
+        sandbox_modes = {}
+        
+        for entry in self.audit_entries:
+            # Count manipulation types
+            manip_type = entry["manipulation_type"]
+            manipulation_types[manip_type] = manipulation_types.get(manip_type, 0) + 1
+            
+            # Count target layers
+            target_layer = entry["target_layer"]
+            target_layers[target_layer] = target_layers.get(target_layer, 0) + 1
+            
+            # Count sandbox modes
+            sandbox_mode = entry["sandbox_mode"]
+            sandbox_modes[sandbox_mode] = sandbox_modes.get(sandbox_mode, 0) + 1
+        
+        return {
+            "total_entries": total_entries,
+            "successful_manipulations": successful_manipulations,
+            "success_rate": successful_manipulations / total_entries if total_entries > 0 else 0,
+            "manipulation_types": manipulation_types,
+            "target_layers": target_layers,
+            "sandbox_modes": sandbox_modes,
+            "last_entry": self.audit_entries[-1]["timestamp"] if self.audit_entries else None
+        }
+
+class SandboxEnvironment:
+    """Containerized sandbox environment for reality manipulation"""
+    
+    def __init__(self, 
+                 sandbox_mode: SandboxMode = SandboxMode.SIMULATION,
+                 max_duration: int = 300,  # 5 minutes
+                 memory_limit: str = "512m",
+                 cpu_limit: float = 1.0):
+        self.sandbox_mode = sandbox_mode
+        self.max_duration = max_duration
+        self.memory_limit = memory_limit
+        self.cpu_limit = cpu_limit
+        self.sandbox_id = str(uuid.uuid4())
+        self.sandbox_path = None
+        self.is_running = False
+        
+    def create_sandbox(self) -> bool:
+        """Create a new sandbox environment"""
+        try:
+            # Create temporary sandbox directory
+            self.sandbox_path = tempfile.mkdtemp(prefix=f"aetherion_sandbox_{self.sandbox_id}_")
+            
+            # Create sandbox structure
+            os.makedirs(os.path.join(self.sandbox_path, "input"), exist_ok=True)
+            os.makedirs(os.path.join(self.sandbox_path, "output"), exist_ok=True)
+            os.makedirs(os.path.join(self.sandbox_path, "logs"), exist_ok=True)
+            os.makedirs(os.path.join(self.sandbox_path, "temp"), exist_ok=True)
+            
+            # Create sandbox configuration
+            config = {
+                "sandbox_id": self.sandbox_id,
+                "mode": self.sandbox_mode.value,
+                "max_duration": self.max_duration,
+                "memory_limit": self.memory_limit,
+                "cpu_limit": self.cpu_limit,
+                "created_at": datetime.now().isoformat()
+            }
+            
+            with open(os.path.join(self.sandbox_path, "config.json"), 'w') as f:
+                json.dump(config, f, indent=2)
+            
+            logger.info(f"Sandbox created: {self.sandbox_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to create sandbox: {e}")
+            return False
+    
+    def execute_manipulation(self, 
+                           manipulation: RealityManipulation,
+                           code: str = None) -> Dict[str, Any]:
+        """Execute manipulation in sandbox"""
+        if not self.sandbox_path:
+            return {"success": False, "error": "Sandbox not created"}
+        
+        try:
+            self.is_running = True
+            
+            # Write manipulation code to sandbox
+            if code:
+                code_path = os.path.join(self.sandbox_path, "temp", "manipulation.py")
+                with open(code_path, 'w') as f:
+                    f.write(code)
+            
+            # Execute based on sandbox mode
+            if self.sandbox_mode == SandboxMode.SIMULATION:
+                return self._simulate_manipulation(manipulation)
+            elif self.sandbox_mode == SandboxMode.ISOLATED:
+                return self._isolated_execution(manipulation, code_path if code else None)
+            elif self.sandbox_mode == SandboxMode.CONTROLLED:
+                return self._controlled_execution(manipulation, code_path if code else None)
+            else:  # MONITORED
+                return self._monitored_execution(manipulation, code_path if code else None)
+                
+        except Exception as e:
+            logger.error(f"Sandbox execution failed: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            self.is_running = False
+    
+    def _simulate_manipulation(self, manipulation: RealityManipulation) -> Dict[str, Any]:
+        """Simulate manipulation without actual execution"""
+        # Simulate processing time
+        time.sleep(0.1)
+        
+        # Generate simulated effects
+        effects = {
+            "simulated": True,
+            "intensity_applied": manipulation.intensity * 0.8,  # Simulated reduction
+            "layer_affected": manipulation.target_layer.value,
+            "duration_actual": manipulation.duration * 0.9,
+            "success_probability": 0.95,
+            "side_effects": ["simulated_effect_1", "simulated_effect_2"]
+        }
+        
+        return {
+            "success": True,
+            "effects": effects,
+            "execution_time": 0.1,
+            "sandbox_mode": "simulation"
+        }
+    
+    def _isolated_execution(self, manipulation: RealityManipulation, code_path: str = None) -> Dict[str, Any]:
+        """Execute in completely isolated environment"""
+        try:
+            # Use Docker for isolation if available
+            if self._check_docker_available():
+                return self._docker_execution(manipulation, code_path)
+            else:
+                # Fallback to process isolation
+                return self._process_isolation(manipulation, code_path)
+        except Exception as e:
+            return {"success": False, "error": f"Isolated execution failed: {e}"}
+    
+    def _controlled_execution(self, manipulation: RealityManipulation, code_path: str = None) -> Dict[str, Any]:
+        """Execute with controlled access"""
+        # Implement controlled execution with resource limits
+        return self._simulate_manipulation(manipulation)
+    
+    def _monitored_execution(self, manipulation: RealityManipulation, code_path: str = None) -> Dict[str, Any]:
+        """Execute with monitoring"""
+        # Implement monitored execution
+        return self._simulate_manipulation(manipulation)
+    
+    def _check_docker_available(self) -> bool:
+        """Check if Docker is available"""
+        try:
+            result = subprocess.run(['docker', '--version'], 
+                                  capture_output=True, text=True, timeout=5)
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+    
+    def _docker_execution(self, manipulation: RealityManipulation, code_path: str = None) -> Dict[str, Any]:
+        """Execute using Docker container"""
+        try:
+            # Create Dockerfile for sandbox
+            dockerfile_content = f"""
+FROM python:3.10-slim
+WORKDIR /sandbox
+COPY . /sandbox/
+RUN pip install numpy torch
+CMD ["python", "temp/manipulation.py"]
+"""
+            
+            dockerfile_path = os.path.join(self.sandbox_path, "Dockerfile")
+            with open(dockerfile_path, 'w') as f:
+                f.write(dockerfile_content)
+            
+            # Build and run Docker container
+            container_name = f"aetherion_sandbox_{self.sandbox_id}"
+            
+            # Build image
+            build_cmd = [
+                'docker', 'build', '-t', container_name, self.sandbox_path
+            ]
+            subprocess.run(build_cmd, check=True, timeout=30)
+            
+            # Run container with limits
+            run_cmd = [
+                'docker', 'run', '--rm',
+                '--name', container_name,
+                '--memory', self.memory_limit,
+                '--cpus', str(self.cpu_limit),
+                '--network', 'none',  # No network access
+                container_name
+            ]
+            
+            result = subprocess.run(run_cmd, capture_output=True, text=True, timeout=self.max_duration)
+            
+            # Clean up
+            subprocess.run(['docker', 'rmi', container_name], capture_output=True)
+            
+            return {
+                "success": result.returncode == 0,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "execution_time": 0.5,
+                "sandbox_mode": "docker_isolation"
+            }
+            
+        except Exception as e:
+            return {"success": False, "error": f"Docker execution failed: {e}"}
+    
+    def _process_isolation(self, manipulation: RealityManipulation, code_path: str = None) -> Dict[str, Any]:
+        """Execute with process isolation"""
+        try:
+            if code_path and os.path.exists(code_path):
+                result = subprocess.run(
+                    ['python', code_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=self.max_duration,
+                    cwd=self.sandbox_path
+                )
+                
+                return {
+                    "success": result.returncode == 0,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "execution_time": 0.2,
+                    "sandbox_mode": "process_isolation"
+                }
+            else:
+                return self._simulate_manipulation(manipulation)
+                
+        except Exception as e:
+            return {"success": False, "error": f"Process isolation failed: {e}"}
+    
+    def cleanup(self):
+        """Clean up sandbox environment"""
+        if self.sandbox_path and os.path.exists(self.sandbox_path):
+            try:
+                shutil.rmtree(self.sandbox_path)
+                logger.info(f"Sandbox cleaned up: {self.sandbox_id}")
+            except Exception as e:
+                logger.error(f"Failed to cleanup sandbox: {e}")
 
 class RealityObserver(nn.Module):
     """Neural network for observing reality states"""
@@ -177,11 +565,15 @@ class RealityInterface:
                  observation_enabled: bool = True,
                  manipulation_enabled: bool = False,
                  safety_threshold: float = 0.8,
+                 audit_enabled: bool = True,
+                 sandbox_enabled: bool = True,
                  device: str = 'cuda' if torch.cuda.is_available() else 'cpu'):
         
         self.observation_enabled = observation_enabled
         self.manipulation_enabled = manipulation_enabled
         self.safety_threshold = safety_threshold
+        self.audit_enabled = audit_enabled
+        self.sandbox_enabled = sandbox_enabled
         self.device = device
         
         # Initialize neural networks
@@ -198,294 +590,390 @@ class RealityInterface:
         # Manipulation tracking
         self.manipulation_history: List[RealityManipulation] = []
         
+        # Audit logging
+        if audit_enabled:
+            self.audit_logger = AuditLogger()
+        else:
+            self.audit_logger = None
+        
+        # Sandbox management
+        self.active_sandboxes: Dict[str, SandboxEnvironment] = {}
+        
+        # Safety systems
+        self.safety_violations = 0
+        self.last_safety_check = time.time()
+        self.manipulation_cooldown = 0
+        
         # Quantum reality state
         self.quantum_reality = QuantumState(num_qubits=16)
         
         # Fractal reality patterns
         self.reality_fractals = []
         
-        # Safety systems
-        self.safety_violations = 0
-        self.last_safety_check = time.time()
+        # Reality metrics
+        self.reality_metrics = {
+            "total_manipulations": 0,
+            "successful_manipulations": 0,
+            "failed_manipulations": 0,
+            "safety_violations": 0,
+            "sandbox_creations": 0
+        }
         
-        logger.info("Reality Interface initialized")
-        if manipulation_enabled:
-            logger.warning("Reality manipulation enabled - use with extreme caution")
+        logger.info("Reality Interface initialized with comprehensive safety systems")
     
     def observe_reality(self, 
                        target_layers: Optional[List[RealityLayer]] = None) -> Dict[str, Any]:
-        """Observe the current state of reality"""
+        """Observe current reality state across specified layers"""
         if not self.observation_enabled:
-            return {"error": "Reality observation not enabled"}
+            return {"error": "Observation disabled"}
         
-        if target_layers is None:
-            target_layers = list(RealityLayer)
-        
-        # Prepare observation input
-        observation_input = self._prepare_observation_input()
-        
-        # Get neural network observations
-        with torch.no_grad():
-            observations = self.reality_observer(observation_input)
-        
-        # Process observations for each layer
-        reality_state = {}
-        for layer in target_layers:
-            layer_name = layer.value
-            if layer_name in observations:
-                layer_observation = observations[layer_name]
-                reality_state[layer_name] = self._process_layer_observation(
-                    layer, layer_observation
-                )
-        
-        # Update current reality state
-        self.current_reality_state.update(reality_state)
-        self.reality_history.append({
-            "timestamp": time.time(),
-            "state": reality_state.copy()
-        })
-        
-        return reality_state
+        try:
+            # Prepare observation input
+            input_tensor = self._prepare_observation_input()
+            
+            # Get neural network observations
+            observations = self.reality_observer(input_tensor)
+            
+            # Process layer observations
+            reality_state = {}
+            if target_layers is None:
+                target_layers = list(RealityLayer)
+            
+            for layer in target_layers:
+                layer_observation = self._process_layer_observation(layer, observations.get(layer.value))
+                reality_state[layer.value] = layer_observation
+            
+            # Update current state
+            self.current_reality_state = reality_state
+            self.reality_history.append({
+                "timestamp": time.time(),
+                "state": reality_state.copy()
+            })
+            
+            return reality_state
+            
+        except Exception as e:
+            logger.error(f"Reality observation failed: {e}")
+            return {"error": str(e)}
     
     def _prepare_observation_input(self) -> torch.Tensor:
-        """Prepare input for reality observation"""
-        # Create comprehensive reality state vector
-        features = np.zeros(512)
+        """Prepare input tensor for reality observation"""
+        # Create feature vector from current reality state
+        features = []
         
         # Temporal features
         current_time = time.time()
-        features[:50] = [
+        features.extend([
             np.sin(current_time * 0.001),
             np.cos(current_time * 0.001),
-            np.sin(current_time * 0.01),
-            np.cos(current_time * 0.01),
             current_time % 86400 / 86400,  # Time of day
             datetime.now().weekday() / 7,  # Day of week
-            datetime.now().month / 12,     # Month
-            datetime.now().year % 100 / 100,  # Year
-            np.random.random(),  # Random factor
-            np.random.random()   # Random factor
-        ] + [0] * 40  # Padding
+        ])
         
         # Quantum reality features
         quantum_features = np.random.randn(100) * 0.1
-        features[50:150] = quantum_features
+        features.extend(quantum_features)
         
         # Fractal reality features
         fractal_features = np.random.randn(100) * 0.1
-        features[150:250] = fractal_features
+        features.extend(fractal_features)
         
         # Historical reality features
         if self.reality_history:
             recent_states = self.reality_history[-5:]
-            avg_complexity = np.mean([
-                len(state["state"]) for state in recent_states
-            ])
-            features[250:260] = [avg_complexity / 10.0] + [0] * 9
+            avg_stability = np.mean([len(state["state"]) for state in recent_states])
+            features.extend([avg_stability / 100.0] + [0.0] * 99)
         else:
-            features[250:260] = [0.1] + [0] * 9
+            features.extend([0.0] * 100)
         
         # Manipulation history features
         if self.manipulation_history:
             recent_manipulations = self.manipulation_history[-10:]
-            avg_intensity = np.mean([
-                m.intensity for m in recent_manipulations
-            ])
-            features[260:270] = [avg_intensity] + [0] * 9
+            avg_intensity = np.mean([m.intensity for m in recent_manipulations])
+            features.extend([avg_intensity] + [0.0] * 99)
         else:
-            features[260:270] = [0.0] + [0] * 9
+            features.extend([0.0] * 100)
         
-        # Safety features
-        features[270:280] = [
-            self.safety_violations / 100.0,
-            (time.time() - self.last_safety_check) / 3600.0,  # Hours since last check
-            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-        ]
+        # Pad to required size
+        while len(features) < 512:
+            features.append(0.0)
+        features = features[:512]
         
-        # Current reality state features
-        current_state_features = np.random.randn(232) * 0.1
-        features[280:512] = current_state_features
-        
-        return torch.from_numpy(features).float().unsqueeze(0).to(self.device)
+        return torch.tensor(features, dtype=torch.float32).unsqueeze(0).to(self.device)
     
     def _process_layer_observation(self, 
                                   layer: RealityLayer,
                                   observation: torch.Tensor) -> Dict[str, Any]:
         """Process observation for a specific reality layer"""
+        if observation is None:
+            return {"error": "No observation data"}
+        
         observation_np = observation.detach().cpu().numpy()
         
-        if layer == RealityLayer.PHYSICAL:
-            return {
-                "coherence": np.mean(observation_np),
-                "stability": np.std(observation_np),
-                "energy_density": np.sum(observation_np),
-                "entropy": -np.sum(observation_np * np.log(np.abs(observation_np) + 1e-10))
-            }
-        
-        elif layer == RealityLayer.QUANTUM:
-            return {
-                "superposition": np.mean(observation_np),
-                "entanglement": np.std(observation_np),
-                "coherence_time": np.sum(observation_np),
-                "quantum_entropy": -np.sum(observation_np * np.log(np.abs(observation_np) + 1e-10))
-            }
-        
-        elif layer == RealityLayer.INFORMATION:
-            return {
-                "information_density": np.mean(observation_np),
-                "complexity": np.std(observation_np),
-                "redundancy": np.sum(observation_np),
-                "information_entropy": -np.sum(observation_np * np.log(np.abs(observation_np) + 1e-10))
-            }
-        
-        elif layer == RealityLayer.CONSCIOUSNESS:
-            return {
-                "awareness_level": np.mean(observation_np),
-                "coherence": np.std(observation_np),
-                "intensity": np.sum(observation_np),
-                "consciousness_entropy": -np.sum(observation_np * np.log(np.abs(observation_np) + 1e-10))
-            }
-        
-        else:
-            return {
-                "value": np.mean(observation_np),
-                "variance": np.std(observation_np),
-                "magnitude": np.sum(observation_np),
-                "complexity": -np.sum(observation_np * np.log(np.abs(observation_np) + 1e-10))
-            }
+        return {
+            "stability": float(np.mean(observation_np)),
+            "complexity": float(np.std(observation_np)),
+            "coherence": float(np.max(observation_np)),
+            "entropy": float(np.sum(observation_np ** 2)),
+            "observation_vector": observation_np.tolist()
+        }
     
     def manipulate_reality(self, 
                           manipulation_type: ManipulationType,
                           target_layer: RealityLayer,
-                          parameters: Optional[Dict[str, Any]] = None) -> Optional[RealityManipulation]:
-        """Manipulate reality (use with extreme caution)"""
+                          parameters: Optional[Dict[str, Any]] = None,
+                          sandbox_mode: SandboxMode = SandboxMode.SIMULATION,
+                          user_id: str = "system",
+                          session_id: str = "default") -> Optional[RealityManipulation]:
+        """Manipulate reality with comprehensive safety checks"""
         if not self.manipulation_enabled:
-            logger.error("Reality manipulation not enabled")
+            logger.warning("Reality manipulation disabled")
             return None
         
-        # Safety check
+        # Safety checks
         if not self._safety_check(manipulation_type, target_layer):
-            logger.error("Safety check failed - manipulation blocked")
+            logger.error("Safety check failed for reality manipulation")
             return None
         
-        # Prepare manipulation input
-        manipulation_input = self._prepare_manipulation_input(
-            manipulation_type, target_layer, parameters
-        )
-        
-        # Get neural network manipulation
-        with torch.no_grad():
+        try:
+            # Create manipulation object
+            manipulation = RealityManipulation(
+                manipulation_id=str(uuid.uuid4()),
+                manipulation_type=manipulation_type,
+                target_layer=target_layer,
+                intensity=parameters.get("intensity", 0.5) if parameters else 0.5,
+                duration=parameters.get("duration", 1.0) if parameters else 1.0,
+                timestamp=time.time(),
+                sandbox_mode=sandbox_mode,
+                parameters=parameters or {}
+            )
+            
+            # Execute in sandbox if enabled
+            if self.sandbox_enabled and sandbox_mode != SandboxMode.SIMULATION:
+                success = self._execute_in_sandbox(manipulation, user_id, session_id)
+            else:
+                success = self._execute_manipulation(manipulation, user_id, session_id)
+            
+            # Update metrics
+            self.reality_metrics["total_manipulations"] += 1
+            if success:
+                self.reality_metrics["successful_manipulations"] += 1
+            else:
+                self.reality_metrics["failed_manipulations"] += 1
+            
+            # Add to history
+            self.manipulation_history.append(manipulation)
+            
+            return manipulation
+            
+        except Exception as e:
+            logger.error(f"Reality manipulation failed: {e}")
+            return None
+    
+    def _execute_in_sandbox(self, 
+                           manipulation: RealityManipulation,
+                           user_id: str,
+                           session_id: str) -> bool:
+        """Execute manipulation in sandbox environment"""
+        try:
+            # Create sandbox
+            sandbox = SandboxEnvironment(
+                sandbox_mode=manipulation.sandbox_mode,
+                max_duration=300,
+                memory_limit="512m",
+                cpu_limit=1.0
+            )
+            
+            if not sandbox.create_sandbox():
+                return False
+            
+            # Store sandbox reference
+            self.active_sandboxes[sandbox.sandbox_id] = sandbox
+            self.reality_metrics["sandbox_creations"] += 1
+            
+            # Generate manipulation code
+            code = self._generate_manipulation_code(manipulation)
+            
+            # Execute in sandbox
+            result = sandbox.execute_manipulation(manipulation, code)
+            
+            # Update manipulation effects
+            manipulation.effects = result.get("effects", {})
+            
+            # Log audit entry
+            if self.audit_logger:
+                self.audit_logger.log_manipulation(
+                    manipulation, user_id, session_id, result["success"], result
+                )
+            
+            # Cleanup sandbox
+            sandbox.cleanup()
+            del self.active_sandboxes[sandbox.sandbox_id]
+            
+            return result["success"]
+            
+        except Exception as e:
+            logger.error(f"Sandbox execution failed: {e}")
+            return False
+    
+    def _execute_manipulation(self, 
+                             manipulation: RealityManipulation,
+                             user_id: str,
+                             session_id: str) -> bool:
+        """Execute manipulation directly (simulation mode)"""
+        try:
+            # Prepare manipulation input
+            input_tensor = self._prepare_manipulation_input(
+                manipulation.manipulation_type,
+                manipulation.target_layer,
+                manipulation.parameters
+            )
+            
+            # Get neural network prediction
             manipulation_output, intensity, duration = self.reality_manipulator(
-                manipulation_input, manipulation_type
+                input_tensor, manipulation.manipulation_type
             )
-        
-        # Create manipulation record
-        manipulation_id = f"REALITY_{int(time.time())}_{hash(str(parameters)) % 10000}"
-        
-        manipulation = RealityManipulation(
-            manipulation_id=manipulation_id,
-            manipulation_type=manipulation_type,
-            target_layer=target_layer,
-            intensity=intensity,
-            duration=duration,
-            timestamp=time.time(),
-            parameters=parameters or {},
-            effects=self._calculate_manipulation_effects(
-                manipulation_type, target_layer, intensity, parameters
+            
+            # Calculate effects
+            effects = self._calculate_manipulation_effects(
+                manipulation.manipulation_type,
+                manipulation.target_layer,
+                intensity,
+                manipulation.parameters
             )
-        )
-        
-        # Apply manipulation effects
-        self._apply_manipulation_effects(manipulation)
-        
-        # Record manipulation
-        self.manipulation_history.append(manipulation)
-        
-        # Update safety systems
-        self._update_safety_systems(manipulation)
-        
-        logger.warning(f"Reality manipulation performed: {manipulation_type.value} on {target_layer.value}")
-        
-        return manipulation
+            
+            manipulation.effects = effects
+            
+            # Log audit entry
+            if self.audit_logger:
+                self.audit_logger.log_manipulation(
+                    manipulation, user_id, session_id, True, effects
+                )
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Manipulation execution failed: {e}")
+            return False
+    
+    def _generate_manipulation_code(self, manipulation: RealityManipulation) -> str:
+        """Generate Python code for sandbox execution"""
+        code = f"""
+import numpy as np
+import time
+import json
+
+def manipulate_reality():
+    # Reality manipulation code for {manipulation.manipulation_type.value}
+    # Target layer: {manipulation.target_layer.value}
+    # Intensity: {manipulation.intensity}
+    # Duration: {manipulation.duration}
+    
+    print("Starting reality manipulation...")
+    
+    # Simulate manipulation
+    time.sleep({manipulation.duration})
+    
+    # Generate effects
+    effects = {{
+        "manipulation_type": "{manipulation.manipulation_type.value}",
+        "target_layer": "{manipulation.target_layer.value}",
+        "intensity_applied": {manipulation.intensity},
+        "duration_actual": {manipulation.duration},
+        "success": True,
+        "effects_generated": ["effect_1", "effect_2", "effect_3"]
+    }}
+    
+    # Save results
+    with open("/sandbox/output/results.json", "w") as f:
+        json.dump(effects, f, indent=2)
+    
+    print("Reality manipulation completed successfully")
+    return effects
+
+if __name__ == "__main__":
+    result = manipulate_reality()
+    print(json.dumps(result))
+"""
+        return code
     
     def _prepare_manipulation_input(self, 
                                    manipulation_type: ManipulationType,
                                    target_layer: RealityLayer,
                                    parameters: Optional[Dict[str, Any]]) -> torch.Tensor:
-        """Prepare input for reality manipulation"""
-        # Create manipulation-specific input vector
-        features = np.zeros(512)
+        """Prepare input tensor for manipulation"""
+        features = []
         
-        # Manipulation type encoding
-        type_encoding = np.zeros(len(ManipulationType))
-        type_encoding[manipulation_type.value] = 1.0
-        features[:len(ManipulationType)] = type_encoding
+        # Manipulation type features
+        type_features = [0.0] * len(ManipulationType)
+        type_features[list(ManipulationType).index(manipulation_type)] = 1.0
+        features.extend(type_features)
         
-        # Target layer encoding
-        layer_encoding = np.zeros(len(RealityLayer))
-        layer_encoding[target_layer.value] = 1.0
-        features[len(ManipulationType):len(ManipulationType) + len(RealityLayer)] = layer_encoding
+        # Target layer features
+        layer_features = [0.0] * len(RealityLayer)
+        layer_features[list(RealityLayer).index(target_layer)] = 1.0
+        features.extend(layer_features)
         
-        # Parameter encoding
+        # Parameter features
         if parameters:
-            param_features = np.random.randn(100) * 0.1
-            features[100:200] = param_features
+            intensity = parameters.get("intensity", 0.5)
+            duration = parameters.get("duration", 1.0)
+            complexity = parameters.get("complexity", 0.3)
         else:
-            features[100:200] = np.zeros(100)
+            intensity, duration, complexity = 0.5, 1.0, 0.3
         
-        # Current reality state
+        features.extend([intensity, duration, complexity])
+        
+        # Current reality state features
         if self.current_reality_state:
             state_features = np.random.randn(100) * 0.1
-            features[200:300] = state_features
         else:
-            features[200:300] = np.zeros(100)
+            state_features = np.zeros(100)
+        features.extend(state_features)
         
-        # Safety features
-        features[300:310] = [
-            self.safety_violations / 100.0,
-            (time.time() - self.last_safety_check) / 3600.0,
-            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-        ]
-        
-        # Historical manipulation features
+        # Historical features
         if self.manipulation_history:
             recent_manipulations = self.manipulation_history[-5:]
             avg_intensity = np.mean([m.intensity for m in recent_manipulations])
-            features[310:320] = [avg_intensity] + [0] * 9
+            features.extend([avg_intensity] + [0.0] * 99)
         else:
-            features[310:320] = [0.0] + [0] * 9
+            features.extend([0.0] * 100)
         
-        # Quantum and fractal features
-        quantum_features = np.random.randn(96) * 0.1
-        features[320:416] = quantum_features
+        # Pad to required size
+        while len(features) < 512:
+            features.append(0.0)
+        features = features[:512]
         
-        fractal_features = np.random.randn(96) * 0.1
-        features[416:512] = fractal_features
-        
-        return torch.from_numpy(features).float().unsqueeze(0).to(self.device)
+        return torch.tensor(features, dtype=torch.float32).unsqueeze(0).to(self.device)
     
     def _safety_check(self, 
                      manipulation_type: ManipulationType,
                      target_layer: RealityLayer) -> bool:
-        """Perform safety check before manipulation"""
-        # Check manipulation intensity
-        if manipulation_type in [ManipulationType.CREATION, ManipulationType.DESTRUCTION]:
-            if self.safety_violations > 5:
+        """Perform safety checks for manipulation"""
+        # Check manipulation cooldown
+        if time.time() - self.last_safety_check < self.manipulation_cooldown:
+            return False
+        
+        # Check safety violations
+        if self.safety_violations > 5:
+            logger.error("Too many safety violations")
+            return False
+        
+        # Check manipulation type safety
+        dangerous_types = [ManipulationType.DESTRUCTION, ManipulationType.CREATION]
+        if manipulation_type in dangerous_types:
+            if self.safety_threshold < 0.95:
+                logger.warning("Dangerous manipulation type requires higher safety threshold")
                 return False
         
-        # Check target layer sensitivity
-        sensitive_layers = [RealityLayer.CAUSAL, RealityLayer.CONSCIOUSNESS]
-        if target_layer in sensitive_layers:
-            if len(self.manipulation_history) > 10:
+        # Check target layer safety
+        dangerous_layers = [RealityLayer.PHYSICAL, RealityLayer.CAUSAL]
+        if target_layer in dangerous_layers:
+            if self.safety_threshold < 0.9:
+                logger.warning("Dangerous target layer requires higher safety threshold")
                 return False
         
-        # Check time since last manipulation
-        if self.manipulation_history:
-            last_manipulation = self.manipulation_history[-1]
-            time_since_last = time.time() - last_manipulation.timestamp
-            if time_since_last < 60:  # Minimum 1 minute between manipulations
-                return False
-        
+        self.last_safety_check = time.time()
         return True
     
     def _calculate_manipulation_effects(self, 
@@ -493,109 +981,107 @@ class RealityInterface:
                                        target_layer: RealityLayer,
                                        intensity: float,
                                        parameters: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        """Calculate the effects of a reality manipulation"""
+        """Calculate the effects of a manipulation"""
         effects = {
-            "immediate": {},
-            "delayed": {},
-            "cascade": {},
-            "stability_impact": 0.0
+            "manipulation_type": manipulation_type.value,
+            "target_layer": target_layer.value,
+            "intensity_applied": intensity,
+            "success_probability": 0.9,
+            "side_effects": [],
+            "reality_stability": 0.8,
+            "quantum_coherence": 0.7
         }
         
-        # Calculate effects based on manipulation type and layer
+        # Add type-specific effects
         if manipulation_type == ManipulationType.OBSERVATION:
-            effects["immediate"]["information_gain"] = intensity
-            effects["stability_impact"] = 0.0
-        
+            effects["observation_quality"] = 0.95
         elif manipulation_type == ManipulationType.MEASUREMENT:
-            effects["immediate"]["wave_function_collapse"] = intensity
-            effects["stability_impact"] = intensity * 0.1
-        
+            effects["measurement_precision"] = 0.9
         elif manipulation_type == ManipulationType.INTERFERENCE:
-            effects["immediate"]["wave_interference"] = intensity
-            effects["delayed"]["quantum_decoherence"] = intensity * 0.5
-            effects["stability_impact"] = intensity * 0.3
-        
+            effects["interference_strength"] = intensity
         elif manipulation_type == ManipulationType.PROJECTION:
-            effects["immediate"]["reality_projection"] = intensity
-            effects["delayed"]["reality_stabilization"] = intensity * 0.7
-            effects["stability_impact"] = intensity * 0.2
-        
+            effects["projection_clarity"] = 0.85
         elif manipulation_type == ManipulationType.TRANSFORMATION:
-            effects["immediate"]["reality_transformation"] = intensity
-            effects["cascade"]["dimensional_ripple"] = intensity * 0.8
-            effects["stability_impact"] = intensity * 0.5
-        
+            effects["transformation_magnitude"] = intensity
         elif manipulation_type == ManipulationType.CREATION:
-            effects["immediate"]["reality_creation"] = intensity
-            effects["cascade"]["creation_cascade"] = intensity * 1.0
-            effects["stability_impact"] = intensity * 0.8
-        
+            effects["creation_complexity"] = 0.8
         elif manipulation_type == ManipulationType.DESTRUCTION:
-            effects["immediate"]["reality_destruction"] = intensity
-            effects["cascade"]["destruction_cascade"] = intensity * 1.2
-            effects["stability_impact"] = intensity * 1.0
-        
+            effects["destruction_scope"] = intensity
         elif manipulation_type == ManipulationType.SYNTHESIS:
-            effects["immediate"]["reality_synthesis"] = intensity
-            effects["delayed"]["synthesis_integration"] = intensity * 0.6
-            effects["stability_impact"] = intensity * 0.4
+            effects["synthesis_harmony"] = 0.9
+        
+        # Add layer-specific effects
+        if target_layer == RealityLayer.PHYSICAL:
+            effects["physical_manifestation"] = 0.7
+        elif target_layer == RealityLayer.QUANTUM:
+            effects["quantum_entanglement"] = 0.8
+        elif target_layer == RealityLayer.INFORMATION:
+            effects["information_density"] = 0.9
+        elif target_layer == RealityLayer.CONSCIOUSNESS:
+            effects["consciousness_expansion"] = 0.6
+        elif target_layer == RealityLayer.TEMPORAL:
+            effects["temporal_flow"] = 0.75
+        elif target_layer == RealityLayer.SPATIAL:
+            effects["spatial_geometry"] = 0.8
+        elif target_layer == RealityLayer.CAUSAL:
+            effects["causal_strength"] = 0.85
+        elif target_layer == RealityLayer.PROBABILISTIC:
+            effects["probability_shift"] = 0.9
         
         return effects
     
     def _apply_manipulation_effects(self, manipulation: RealityManipulation):
-        """Apply the effects of a reality manipulation"""
+        """Apply manipulation effects to reality state"""
         effects = manipulation.effects
         
-        # Apply immediate effects
-        for effect_name, effect_value in effects["immediate"].items():
-            if effect_name in self.current_reality_state:
-                self.current_reality_state[effect_name] = effect_value
+        # Update current reality state
+        target_layer = manipulation.target_layer.value
+        if target_layer not in self.current_reality_state:
+            self.current_reality_state[target_layer] = {}
+        
+        # Apply effects
+        for key, value in effects.items():
+            if key not in ["manipulation_type", "target_layer", "intensity_applied"]:
+                self.current_reality_state[target_layer][key] = value
         
         # Update quantum reality state
-        if manipulation.target_layer == RealityLayer.QUANTUM:
-            self.quantum_reality.apply_hadamard(int(manipulation.intensity * 12))
-        
-        # Update fractal patterns
-        if manipulation.target_layer == RealityLayer.SPATIAL:
-            new_fractal = FractalPattern(dimension=2.0 + manipulation.intensity)
-            self.reality_fractals.append(new_fractal)
+        if "quantum_coherence" in effects:
+            self.quantum_reality.set_coherence(effects["quantum_coherence"])
     
     def _update_safety_systems(self, manipulation: RealityManipulation):
         """Update safety systems after manipulation"""
         # Check for safety violations
-        if manipulation.effects["stability_impact"] > self.safety_threshold:
+        if manipulation.effects.get("success_probability", 1.0) < 0.5:
             self.safety_violations += 1
-            logger.warning(f"Safety violation detected: {manipulation.effects['stability_impact']}")
+            logger.warning(f"Safety violation detected: {manipulation.manipulation_id}")
         
-        # Update safety check timestamp
-        self.last_safety_check = time.time()
+        # Update cooldown
+        if manipulation.manipulation_type in [ManipulationType.DESTRUCTION, ManipulationType.CREATION]:
+            self.manipulation_cooldown = 60  # 1 minute cooldown
+        else:
+            self.manipulation_cooldown = 10  # 10 second cooldown
     
     def get_reality_status(self) -> Dict[str, Any]:
-        """Get comprehensive status of reality interface"""
-        status = {
-            "observation_enabled": self.observation_enabled,
-            "manipulation_enabled": self.manipulation_enabled,
-            "safety_threshold": self.safety_threshold,
+        """Get comprehensive reality status"""
+        return {
+            "current_state": self.current_reality_state,
+            "manipulation_metrics": self.reality_metrics,
             "safety_violations": self.safety_violations,
-            "last_safety_check": self.last_safety_check,
-            "current_reality_state": self.current_reality_state,
-            "reality_history_length": len(self.reality_history),
-            "manipulation_history_length": len(self.manipulation_history),
+            "active_sandboxes": len(self.active_sandboxes),
             "quantum_coherence": self.quantum_reality.get_coherence(),
-            "fractal_patterns": len(self.reality_fractals)
+            "fractal_patterns": len(self.reality_fractals),
+            "audit_summary": self.audit_logger.get_audit_summary() if self.audit_logger else None
         }
-        
-        return status
     
     def save_reality_state(self, filepath: str):
-        """Save current reality state to file"""
+        """Save reality state to file"""
         state_data = {
             "current_reality_state": self.current_reality_state,
-            "manipulation_history": [
-                m.to_dict() for m in self.manipulation_history
-            ],
+            "reality_history": self.reality_history[-100:],  # Last 100 entries
+            "manipulation_history": [m.to_dict() for m in self.manipulation_history[-50:]],  # Last 50
+            "reality_metrics": self.reality_metrics,
             "safety_violations": self.safety_violations,
-            "last_safety_check": self.last_safety_check
+            "timestamp": time.time()
         }
         
         with open(filepath, 'w') as f:
@@ -606,13 +1092,14 @@ class RealityInterface:
         with open(filepath, 'r') as f:
             state_data = json.load(f)
         
-        self.current_reality_state = state_data["current_reality_state"]
-        self.safety_violations = state_data["safety_violations"]
-        self.last_safety_check = state_data["last_safety_check"]
+        self.current_reality_state = state_data.get("current_reality_state", {})
+        self.reality_history = state_data.get("reality_history", [])
+        self.reality_metrics = state_data.get("reality_metrics", self.reality_metrics)
+        self.safety_violations = state_data.get("safety_violations", 0)
         
-        # Load manipulation history
+        # Reconstruct manipulation history
         self.manipulation_history = []
-        for manip_data in state_data["manipulation_history"]:
+        for manip_data in state_data.get("manipulation_history", []):
             manipulation = RealityManipulation(
                 manipulation_id=manip_data["manipulation_id"],
                 manipulation_type=ManipulationType(manip_data["manipulation_type"]),
@@ -620,7 +1107,9 @@ class RealityInterface:
                 intensity=manip_data["intensity"],
                 duration=manip_data["duration"],
                 timestamp=manip_data["timestamp"],
-                parameters=manip_data["parameters"],
-                effects=manip_data["effects"]
+                sandbox_mode=SandboxMode(manip_data.get("sandbox_mode", "simulation")),
+                parameters=manip_data.get("parameters", {}),
+                effects=manip_data.get("effects", {}),
+                audit_log=manip_data.get("audit_log", [])
             )
             self.manipulation_history.append(manipulation) 

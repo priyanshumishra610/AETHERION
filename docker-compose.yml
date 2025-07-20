@@ -1,0 +1,189 @@
+version: '3.8'
+
+services:
+  # AETHERION Core System
+  aetherion:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: final
+    container_name: aetherion-core
+    restart: unless-stopped
+    environment:
+      - AETHERION_ENV=production
+      - PYTHONPATH=/app
+      - KEEPER_USERNAME=${KEEPER_USERNAME:-keeper}
+      - KEEPER_PASSWORD=${KEEPER_PASSWORD:-changeme}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-here}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./aetherion.db}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENABLE_QUANTUM=${ENABLE_QUANTUM:-false}
+      - ENABLE_HARDWARE_KILL=${ENABLE_HARDWARE_KILL:-false}
+      - SAFETY_LEVEL=${SAFETY_LEVEL:-normal}
+    ports:
+      - "8000:8000"  # FastAPI backend
+      - "3000:3000"  # React frontend
+    volumes:
+      - aetherion_logs:/app/logs
+      - aetherion_data:/app/data
+      - aetherion_plugins:/app/plugins
+      - aetherion_personalities:/app/personalities
+      - ./keeper_licenses.json:/app/keeper_licenses.json:ro
+      - ./keeper_public_key.pem:/app/keeper_public_key.pem:ro
+    networks:
+      - aetherion-network
+    depends_on:
+      - redis
+      - postgres
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+        reservations:
+          memory: 2G
+          cpus: '1.0'
+
+  # Redis for caching and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: aetherion-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-aetherion-redis-pass}
+    volumes:
+      - redis_data:/data
+    networks:
+      - aetherion-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL for persistent data storage
+  postgres:
+    image: postgres:15-alpine
+    container_name: aetherion-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=aetherion
+      - POSTGRES_USER=${POSTGRES_USER:-aetherion}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-aetherion-db-pass}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - aetherion-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aetherion}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: aetherion-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    networks:
+      - aetherion-network
+    depends_on:
+      - aetherion
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Prometheus for monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: aetherion-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - aetherion-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: aetherion-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-aetherion-grafana}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - aetherion-network
+    depends_on:
+      - prometheus
+
+  # Guardian process for external kill signals
+  guardian:
+    image: python:3.10-slim
+    container_name: aetherion-guardian
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./guardian.py:/app/guardian.py:ro
+      - ./core:/app/core:ro
+    command: ["python", "guardian.py"]
+    networks:
+      - aetherion-network
+    depends_on:
+      - aetherion
+
+volumes:
+  aetherion_logs:
+    driver: local
+  aetherion_data:
+    driver: local
+  aetherion_plugins:
+    driver: local
+  aetherion_personalities:
+    driver: local
+  redis_data:
+    driver: local
+  postgres_data:
+    driver: local
+  nginx_logs:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  aetherion-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16 

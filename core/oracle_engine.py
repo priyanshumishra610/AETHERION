@@ -17,7 +17,12 @@ from enum import Enum
 import logging
 import json
 import time
+import threading
+import asyncio
+import uuid
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import networkx as nx
 from .utils import DimensionalVector, QuantumState, FractalPattern
 
 logger = logging.getLogger(__name__)
@@ -37,14 +42,18 @@ class TimelineBranch:
     def __init__(self, 
                  branch_id: str,
                  probability: float = 1.0,
-                 divergence_point: Optional[datetime] = None):
+                 divergence_point: Optional[datetime] = None,
+                 parent_branch: Optional[str] = None):
         self.branch_id = branch_id
         self.probability = probability
         self.divergence_point = divergence_point or datetime.now()
+        self.parent_branch = parent_branch
         self.events = []
         self.sub_branches = []
         self.quantum_state = None
-    
+        self.weight = 1.0
+        self.fork_count = 0
+        
     def add_event(self, event: Dict[str, Any]):
         """Add an event to this timeline branch"""
         self.events.append({
@@ -54,24 +63,108 @@ class TimelineBranch:
     
     def create_sub_branch(self, 
                          sub_branch_id: str,
-                         probability: float = 0.5) -> 'TimelineBranch':
+                         probability: float = 0.5,
+                         weight: float = 1.0) -> 'TimelineBranch':
         """Create a sub-branch from this timeline"""
         sub_branch = TimelineBranch(
             sub_branch_id,
             probability,
-            datetime.now()
+            datetime.now(),
+            self.branch_id
         )
+        sub_branch.weight = weight
         self.sub_branches.append(sub_branch)
+        self.fork_count += 1
         return sub_branch
     
     def get_branch_probability(self) -> float:
         """Calculate the total probability of this branch"""
-        total_prob = self.probability
+        total_prob = self.probability * self.weight
         
         for sub_branch in self.sub_branches:
             total_prob *= sub_branch.get_branch_probability()
         
         return total_prob
+    
+    def get_branch_depth(self) -> int:
+        """Get the depth of this branch in the timeline tree"""
+        if not self.sub_branches:
+            return 0
+        return 1 + max(sub.get_branch_depth() for sub in self.sub_branches)
+
+@dataclass
+class CauseEffectNode:
+    """Represents a node in the cause-effect chain"""
+    node_id: str
+    event: str
+    timestamp: datetime
+    probability: float
+    confidence: float
+    causes: List[str] = field(default_factory=list)
+    effects: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+class CauseEffectGraph:
+    """Directed graph for cause-effect relationships"""
+    
+    def __init__(self):
+        self.graph = nx.DiGraph()
+        self.nodes: Dict[str, CauseEffectNode] = {}
+        self.edge_weights: Dict[Tuple[str, str], float] = {}
+    
+    def add_node(self, node: CauseEffectNode):
+        """Add a node to the cause-effect graph"""
+        self.nodes[node.node_id] = node
+        self.graph.add_node(node.node_id, **node.metadata)
+    
+    def add_cause_effect(self, cause_id: str, effect_id: str, weight: float = 1.0):
+        """Add a cause-effect relationship"""
+        if cause_id in self.nodes and effect_id in self.nodes:
+            self.graph.add_edge(cause_id, effect_id, weight=weight)
+            self.edge_weights[(cause_id, effect_id)] = weight
+    
+    def get_causal_chain(self, start_node: str, max_depth: int = 5) -> List[str]:
+        """Get the causal chain starting from a node"""
+        if start_node not in self.nodes:
+            return []
+        
+        chain = []
+        visited = set()
+        
+        def dfs(node_id: str, depth: int):
+            if depth > max_depth or node_id in visited:
+                return
+            visited.add(node_id)
+            chain.append(node_id)
+            
+            for successor in self.graph.successors(node_id):
+                dfs(successor, depth + 1)
+        
+        dfs(start_node, 0)
+        return chain
+    
+    def get_root_causes(self, node_id: str) -> List[str]:
+        """Get all root causes for a given node"""
+        if node_id not in self.nodes:
+            return []
+        
+        root_causes = []
+        visited = set()
+        
+        def find_roots(node: str):
+            if node in visited:
+                return
+            visited.add(node)
+            
+            predecessors = list(self.graph.predecessors(node))
+            if not predecessors:
+                root_causes.append(node)
+            else:
+                for pred in predecessors:
+                    find_roots(pred)
+        
+        find_roots(node_id)
+        return root_causes
 
 @dataclass
 class Prediction:
@@ -83,6 +176,8 @@ class Prediction:
     confidence: float
     timeline: str
     timestamp: datetime
+    quantum_seed: Optional[int] = None
+    causal_chain: Optional[List[str]] = None
     details: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -95,8 +190,76 @@ class Prediction:
             "confidence": self.confidence,
             "timeline": self.timeline,
             "timestamp": self.timestamp.isoformat(),
+            "quantum_seed": self.quantum_seed,
+            "causal_chain": self.causal_chain,
             "details": self.details
         }
+
+class QuantumRandomness:
+    """Quantum randomness generator for Oracle predictions"""
+    
+    def __init__(self, use_real_quantum: bool = False):
+        self.use_real_quantum = use_real_quantum
+        self.seed_history = []
+        self.current_seed = None
+        
+        if use_real_quantum:
+            try:
+                # Try to import Qiskit for real quantum randomness
+                from qiskit import QuantumCircuit, Aer, execute
+                self.qiskit_available = True
+                self.backend = Aer.get_backend('qasm_simulator')
+            except ImportError:
+                logger.warning("Qiskit not available, using mock quantum randomness")
+                self.qiskit_available = False
+        else:
+            self.qiskit_available = False
+    
+    def generate_quantum_seed(self) -> int:
+        """Generate a quantum random seed"""
+        if self.use_real_quantum and self.qiskit_available:
+            return self._generate_real_quantum_seed()
+        else:
+            return self._generate_mock_quantum_seed()
+    
+    def _generate_real_quantum_seed(self) -> int:
+        """Generate real quantum randomness using Qiskit"""
+        try:
+            # Create quantum circuit
+            qc = QuantumCircuit(32, 32)  # 32 qubits for 32-bit seed
+            qc.h(range(32))  # Apply Hadamard to all qubits
+            qc.measure_all()
+            
+            # Execute circuit
+            job = execute(qc, self.backend, shots=1)
+            result = job.result()
+            counts = result.get_counts()
+            
+            # Convert to integer
+            bitstring = list(counts.keys())[0]
+            seed = int(bitstring, 2)
+            
+            self.seed_history.append(seed)
+            self.current_seed = seed
+            return seed
+            
+        except Exception as e:
+            logger.error(f"Quantum seed generation failed: {e}")
+            return self._generate_mock_quantum_seed()
+    
+    def _generate_mock_quantum_seed(self) -> int:
+        """Generate mock quantum randomness"""
+        # Use high-quality pseudo-random number generator
+        seed = int(time.time() * 1000000) % (2**32)
+        seed ^= hash(str(uuid.uuid4())) % (2**32)
+        
+        self.seed_history.append(seed)
+        self.current_seed = seed
+        return seed
+    
+    def get_seed_history(self) -> List[int]:
+        """Get history of generated seeds"""
+        return self.seed_history.copy()
 
 class OracleNeuralNetwork(nn.Module):
     """Neural network for the Oracle Engine"""
@@ -157,10 +320,13 @@ class OracleEngine:
     def __init__(self, 
                  prediction_horizon: int = 1000,
                  confidence_threshold: float = 0.8,
+                 max_parallel_predictions: int = 10,
+                 use_quantum_randomness: bool = False,
                  device: str = 'cuda' if torch.cuda.is_available() else 'cpu'):
         
         self.prediction_horizon = prediction_horizon
         self.confidence_threshold = confidence_threshold
+        self.max_parallel_predictions = max_parallel_predictions
         self.device = device
         
         # Initialize neural network
@@ -174,14 +340,23 @@ class OracleEngine:
         self.timelines: Dict[str, TimelineBranch] = {}
         self.current_timeline = "main"
         
+        # Cause-effect graph
+        self.cause_effect_graph = CauseEffectGraph()
+        
         # Prediction history
         self.prediction_history: List[Prediction] = []
         
         # Quantum prediction state
         self.quantum_state = QuantumState(num_qubits=12)
+        self.quantum_randomness = QuantumRandomness(use_quantum_randomness)
         
         # Fractal prediction patterns
         self.fractal_patterns = []
+        
+        # Thread safety
+        self.prediction_lock = threading.Lock()
+        self.timeline_lock = threading.Lock()
+        self.executor = ThreadPoolExecutor(max_workers=max_parallel_predictions)
         
         # Initialize main timeline
         self._initialize_timelines()
@@ -198,150 +373,256 @@ class OracleEngine:
         self.timelines["quantum_negative"] = TimelineBranch("quantum_negative", 0.5)
         
         # Fractal branches
-        self.timelines["fractal_expansion"] = TimelineBranch("fractal_expansion", 0.3)
-        self.timelines["fractal_contraction"] = TimelineBranch("fractal_contraction", 0.3)
-        self.timelines["fractal_stable"] = TimelineBranch("fractal_stable", 0.4)
+        self.timelines["fractal_alpha"] = TimelineBranch("fractal_alpha", 0.3)
+        self.timelines["fractal_beta"] = TimelineBranch("fractal_beta", 0.3)
+        self.timelines["fractal_gamma"] = TimelineBranch("fractal_gamma", 0.4)
+        
+        # Causal branches
+        self.timelines["causal_linear"] = TimelineBranch("causal_linear", 0.6)
+        self.timelines["causal_chaotic"] = TimelineBranch("causal_chaotic", 0.4)
+    
+    def create_timeline_fork(self, 
+                           parent_timeline: str,
+                           fork_id: str,
+                           probability: float = 0.5,
+                           weight: float = 1.0) -> Optional[TimelineBranch]:
+        """Create a new timeline fork from an existing timeline"""
+        with self.timeline_lock:
+            if parent_timeline not in self.timelines:
+                logger.error(f"Parent timeline {parent_timeline} not found")
+                return None
+            
+            parent = self.timelines[parent_timeline]
+            new_branch = parent.create_sub_branch(fork_id, probability, weight)
+            self.timelines[fork_id] = new_branch
+            
+            logger.info(f"Created timeline fork: {fork_id} from {parent_timeline}")
+            return new_branch
     
     def predict_event(self, 
                      event_description: str,
                      prediction_type: PredictionType = PredictionType.OMNI,
-                     timeline: Optional[str] = None) -> Prediction:
-        """Make a prediction about a specific event"""
+                     timeline: Optional[str] = None,
+                     use_quantum_seed: bool = True) -> Prediction:
+        """Predict an event with thread safety"""
+        with self.prediction_lock:
+            return self._predict_event_internal(
+                event_description, prediction_type, timeline, use_quantum_seed
+            )
+    
+    def _predict_event_internal(self, 
+                               event_description: str,
+                               prediction_type: PredictionType = PredictionType.OMNI,
+                               timeline: Optional[str] = None,
+                               use_quantum_seed: bool = True) -> Prediction:
+        """Internal prediction method"""
+        # Generate quantum seed if requested
+        quantum_seed = None
+        if use_quantum_seed:
+            quantum_seed = self.quantum_randomness.generate_quantum_seed()
+            np.random.seed(quantum_seed)
         
-        # Generate prediction ID
-        prediction_id = f"ORACLE_{int(time.time())}_{hash(event_description) % 10000}"
-        
-        # Prepare input for neural network
-        input_data = self._prepare_prediction_input(event_description, prediction_type)
-        
-        # Get neural network prediction
-        with torch.no_grad():
-            probabilities, confidence, timeline_features = self.oracle_network(input_data)
-        
-        # Process predictions
-        probability = probabilities.mean().item()
-        confidence_level = confidence.mean().item()
-        
-        # Determine timeline
+        # Select timeline
         if timeline is None:
-            timeline = self._select_timeline(timeline_features)
+            timeline = self._select_timeline()
+        
+        # Prepare input
+        input_tensor = self._prepare_prediction_input(event_description, prediction_type)
+        
+        # Make prediction
+        probabilities, confidence, timeline_features = self.oracle_network(input_tensor)
+        
+        # Extract predictions
+        probability = probabilities[0, 0].item()
+        confidence_level = confidence[0, 0].item()
         
         # Create prediction object
         prediction = Prediction(
-            prediction_id=prediction_id,
+            prediction_id=str(uuid.uuid4()),
             prediction_type=prediction_type,
             target_event=event_description,
             probability=probability,
             confidence=confidence_level,
             timeline=timeline,
             timestamp=datetime.now(),
-            details={
-                "neural_probability": probability,
-                "neural_confidence": confidence_level,
-                "timeline_features": timeline_features.cpu().numpy().tolist(),
-                "quantum_coherence": self.quantum_state.get_coherence(),
-                "fractal_complexity": len(self.fractal_patterns)
-            }
+            quantum_seed=quantum_seed
         )
         
-        # Store prediction
-        self.prediction_history.append(prediction)
-        
-        # Update timeline
+        # Add to timeline
         if timeline in self.timelines:
             self.timelines[timeline].add_event({
-                "type": "prediction",
-                "prediction_id": prediction_id,
-                "event": event_description,
-                "probability": probability
+                "prediction": prediction.to_dict(),
+                "type": prediction_type.value
             })
         
-        logger.info(f"Oracle prediction made: {event_description} - Probability: {probability:.3f}")
+        # Add to history
+        self.prediction_history.append(prediction)
         
         return prediction
+    
+    def predict_parallel_events(self, 
+                               events: List[Tuple[str, PredictionType]],
+                               timeline: Optional[str] = None) -> List[Prediction]:
+        """Make parallel predictions for multiple events"""
+        futures = []
+        
+        for event_desc, pred_type in events:
+            future = self.executor.submit(
+                self.predict_event, event_desc, pred_type, timeline
+            )
+            futures.append(future)
+        
+        predictions = []
+        for future in as_completed(futures):
+            try:
+                prediction = future.result()
+                predictions.append(prediction)
+            except Exception as e:
+                logger.error(f"Parallel prediction failed: {e}")
+        
+        return predictions
+    
+    def add_cause_effect_relationship(self, 
+                                    cause_event: str,
+                                    effect_event: str,
+                                    weight: float = 1.0) -> bool:
+        """Add a cause-effect relationship to the graph"""
+        try:
+            # Create nodes if they don't exist
+            cause_id = str(uuid.uuid4())
+            effect_id = str(uuid.uuid4())
+            
+            cause_node = CauseEffectNode(
+                node_id=cause_id,
+                event=cause_event,
+                timestamp=datetime.now(),
+                probability=1.0,
+                confidence=1.0
+            )
+            
+            effect_node = CauseEffectNode(
+                node_id=effect_id,
+                event=effect_event,
+                timestamp=datetime.now(),
+                probability=1.0,
+                confidence=1.0
+            )
+            
+            self.cause_effect_graph.add_node(cause_node)
+            self.cause_effect_graph.add_node(effect_node)
+            self.cause_effect_graph.add_cause_effect(cause_id, effect_id, weight)
+            
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add cause-effect relationship: {e}")
+            return False
+    
+    def predict_causal_chain(self, 
+                           initial_event: str,
+                           chain_length: int = 5) -> List[Prediction]:
+        """Predict a chain of causal events"""
+        predictions = []
+        
+        # Create initial node
+        initial_id = str(uuid.uuid4())
+        initial_node = CauseEffectNode(
+            node_id=initial_id,
+            event=initial_event,
+            timestamp=datetime.now(),
+            probability=1.0,
+            confidence=1.0
+        )
+        self.cause_effect_graph.add_node(initial_node)
+        
+        current_event = initial_event
+        for i in range(chain_length):
+            # Predict next event in chain
+            prediction = self.predict_event(
+                f"Next event after: {current_event}",
+                PredictionType.CAUSAL
+            )
+            
+            # Add to cause-effect graph
+            next_id = str(uuid.uuid4())
+            next_node = CauseEffectNode(
+                node_id=next_id,
+                event=prediction.target_event,
+                timestamp=prediction.timestamp,
+                probability=prediction.probability,
+                confidence=prediction.confidence
+            )
+            
+            self.cause_effect_graph.add_node(next_node)
+            self.cause_effect_graph.add_cause_effect(initial_id, next_id, prediction.probability)
+            
+            predictions.append(prediction)
+            current_event = prediction.target_event
+            initial_id = next_id
+        
+        return predictions
     
     def _prepare_prediction_input(self, 
                                  event_description: str,
                                  prediction_type: PredictionType) -> torch.Tensor:
-        """Prepare input data for the neural network"""
-        # Create feature vector from event description
-        features = np.zeros(512)
+        """Prepare input tensor for prediction"""
+        # Simple feature extraction
+        features = []
         
-        # Text embedding (simplified)
-        text_hash = hash(event_description)
-        features[:100] = np.random.randn(100) * 0.1  # Text features
+        # Event description features
+        desc_length = len(event_description)
+        features.append(desc_length / 1000.0)  # Normalized length
         
-        # Prediction type encoding
-        type_encoding = np.zeros(len(PredictionType))
-        type_encoding[list(PredictionType).index(prediction_type)] = 1.0
-        features[100:100+len(PredictionType)] = type_encoding
-        
-        # Temporal features
-        current_time = time.time()
-        features[110:120] = [
-            np.sin(current_time * 0.001),
-            np.cos(current_time * 0.001),
-            np.sin(current_time * 0.01),
-            np.cos(current_time * 0.01),
-            current_time % 86400 / 86400,  # Time of day
-            datetime.now().weekday() / 7,  # Day of week
-            datetime.now().month / 12,     # Month
-            datetime.now().year % 100 / 100,  # Year
-            np.random.random(),  # Random factor
-            np.random.random()   # Random factor
-        ]
-        
-        # Quantum state features
-        quantum_features = np.random.randn(100) * 0.1
-        features[120:220] = quantum_features
-        
-        # Fractal pattern features
-        fractal_features = np.random.randn(100) * 0.1
-        features[220:320] = fractal_features
-        
-        # Historical prediction features
-        if self.prediction_history:
-            recent_predictions = self.prediction_history[-10:]
-            avg_probability = np.mean([p.probability for p in recent_predictions])
-            avg_confidence = np.mean([p.confidence for p in recent_predictions])
-            features[320:330] = [avg_probability, avg_confidence] + [0] * 8
-        else:
-            features[320:330] = [0.5, 0.5] + [0] * 8
+        # Prediction type features
+        type_features = [0.0] * len(PredictionType)
+        type_features[prediction_type.value.index(prediction_type.value)] = 1.0
+        features.extend(type_features)
         
         # Timeline features
-        timeline_features = np.random.randn(182) * 0.1
-        features[330:512] = timeline_features
+        timeline_features = [0.0] * len(self.timelines)
+        for i, timeline_name in enumerate(self.timelines.keys()):
+            if timeline_name in event_description.lower():
+                timeline_features[i] = 1.0
+        features.extend(timeline_features)
         
-        return torch.from_numpy(features).float().unsqueeze(0).to(self.device)
-    
-    def _select_timeline(self, timeline_features: torch.Tensor) -> str:
-        """Select the most appropriate timeline for the prediction"""
-        # Convert features to probabilities
-        timeline_probs = F.softmax(timeline_features, dim=-1)
-        
-        # Map to available timelines
-        timeline_names = list(self.timelines.keys())
-        selected_idx = torch.argmax(timeline_probs).item()
-        
-        if selected_idx < len(timeline_names):
-            return timeline_names[selected_idx]
+        # Quantum features
+        if self.quantum_randomness.current_seed:
+            quantum_features = [
+                (self.quantum_randomness.current_seed % 1000) / 1000.0,
+                len(self.quantum_randomness.seed_history) / 1000.0
+            ]
         else:
-            return "main"
+            quantum_features = [0.0, 0.0]
+        features.extend(quantum_features)
+        
+        # Pad to required size
+        while len(features) < 512:
+            features.append(0.0)
+        features = features[:512]
+        
+        return torch.tensor(features, dtype=torch.float32).unsqueeze(0).to(self.device)
+    
+    def _select_timeline(self, timeline_features: Optional[torch.Tensor] = None) -> str:
+        """Select appropriate timeline for prediction"""
+        if timeline_features is not None:
+            # Use neural network to select timeline
+            timeline_scores = timeline_features.squeeze()
+            timeline_names = list(self.timelines.keys())
+            selected_idx = torch.argmax(timeline_scores).item()
+            return timeline_names[selected_idx % len(timeline_names)]
+        else:
+            # Simple random selection
+            return np.random.choice(list(self.timelines.keys()))
     
     def predict_multiple_timelines(self, 
                                  event_description: str,
                                  num_timelines: int = 5) -> List[Prediction]:
-        """Make predictions across multiple timelines"""
+        """Predict event across multiple timelines"""
         predictions = []
+        timeline_names = list(self.timelines.keys())
         
-        for i in range(num_timelines):
-            # Create timeline-specific prediction
-            timeline_name = f"timeline_{i}"
-            prediction = self.predict_event(
-                event_description,
-                PredictionType.OMNI,
-                timeline_name
-            )
+        for i in range(min(num_timelines, len(timeline_names))):
+            timeline = timeline_names[i]
+            prediction = self.predict_event(event_description, timeline=timeline)
             predictions.append(prediction)
         
         return predictions
@@ -349,7 +630,7 @@ class OracleEngine:
     def analyze_probability_distribution(self, 
                                        event_description: str,
                                        num_samples: int = 1000) -> Dict[str, Any]:
-        """Analyze the probability distribution for an event"""
+        """Analyze probability distribution for an event"""
         probabilities = []
         confidences = []
         
@@ -358,165 +639,93 @@ class OracleEngine:
             probabilities.append(prediction.probability)
             confidences.append(prediction.confidence)
         
-        # Calculate statistics
-        prob_array = np.array(probabilities)
-        conf_array = np.array(confidences)
-        
-        analysis = {
-            "mean_probability": np.mean(prob_array),
-            "std_probability": np.std(prob_array),
-            "min_probability": np.min(prob_array),
-            "max_probability": np.max(prob_array),
-            "median_probability": np.median(prob_array),
-            "mean_confidence": np.mean(conf_array),
-            "std_confidence": np.std(conf_array),
-            "probability_distribution": {
-                "0-0.2": np.sum(prob_array < 0.2),
-                "0.2-0.4": np.sum((prob_array >= 0.2) & (prob_array < 0.4)),
-                "0.4-0.6": np.sum((prob_array >= 0.4) & (prob_array < 0.6)),
-                "0.6-0.8": np.sum((prob_array >= 0.6) & (prob_array < 0.8)),
-                "0.8-1.0": np.sum(prob_array >= 0.8)
+        return {
+            "mean_probability": np.mean(probabilities),
+            "std_probability": np.std(probabilities),
+            "mean_confidence": np.mean(confidences),
+            "std_confidence": np.std(confidences),
+            "min_probability": np.min(probabilities),
+            "max_probability": np.max(probabilities),
+            "distribution": {
+                "probabilities": probabilities,
+                "confidences": confidences
             }
         }
-        
-        return analysis
-    
-    def predict_causal_chain(self, 
-                           initial_event: str,
-                           chain_length: int = 5) -> List[Prediction]:
-        """Predict a chain of causal events"""
-        causal_chain = []
-        current_event = initial_event
-        
-        for i in range(chain_length):
-            # Predict the next event in the chain
-            prediction = self.predict_event(
-                current_event,
-                PredictionType.CAUSAL
-            )
-            
-            causal_chain.append(prediction)
-            
-            # Generate next event description based on prediction
-            if prediction.probability > 0.7:
-                current_event = f"Event following: {current_event} (high probability)"
-            else:
-                current_event = f"Event following: {current_event} (low probability)"
-        
-        return causal_chain
     
     def quantum_predict(self, 
                        event_description: str,
                        superposition_states: int = 4) -> List[Prediction]:
         """Make quantum superposition predictions"""
-        quantum_predictions = []
+        predictions = []
         
-        # Create superposition states
         for i in range(superposition_states):
-            # Apply quantum transformation
-            self.quantum_state.apply_hadamard(i % 12)
+            # Generate quantum seed for each superposition
+            quantum_seed = self.quantum_randomness.generate_quantum_seed()
             
-            # Make prediction in this quantum state
             prediction = self.predict_event(
                 event_description,
                 PredictionType.QUANTUM,
-                f"quantum_state_{i}"
+                use_quantum_seed=True
             )
-            
-            # Add quantum coherence to prediction
-            prediction.details["quantum_state"] = i
-            prediction.details["quantum_coherence"] = self.quantum_state.get_coherence()
-            
-            quantum_predictions.append(prediction)
+            predictions.append(prediction)
         
-        return quantum_predictions
+        return predictions
     
     def fractal_predict(self, 
                        event_description: str,
                        fractal_depth: int = 3) -> List[Prediction]:
         """Make fractal self-similar predictions"""
-        fractal_predictions = []
-        
-        # Create fractal pattern
-        fractal = FractalPattern(dimension=2.0)
+        predictions = []
         
         for depth in range(fractal_depth):
-            # Scale event description for fractal level
-            scaled_event = f"{event_description} (fractal_level_{depth})"
+            # Scale event description based on depth
+            scaled_description = f"{event_description} (depth {depth})"
             
-            # Make prediction at this fractal level
             prediction = self.predict_event(
-                scaled_event,
-                PredictionType.FRACTAL,
-                f"fractal_level_{depth}"
+                scaled_description,
+                PredictionType.FRACTAL
             )
-            
-            # Add fractal information
-            prediction.details["fractal_depth"] = depth
-            prediction.details["fractal_dimension"] = fractal.get_fractal_dimension()
-            prediction.details["self_similarity"] = fractal.get_self_similarity_score()
-            
-            fractal_predictions.append(prediction)
+            predictions.append(prediction)
         
-        return fractal_predictions
+        return predictions
     
     def get_oracle_insights(self) -> Dict[str, Any]:
         """Get comprehensive insights from the Oracle"""
-        if not self.prediction_history:
-            return {"error": "No predictions made yet"}
-        
-        # Calculate insights
-        total_predictions = len(self.prediction_history)
-        avg_confidence = np.mean([p.confidence for p in self.prediction_history])
-        avg_probability = np.mean([p.probability for p in self.prediction_history])
-        
-        # Timeline analysis
-        timeline_counts = {}
-        for prediction in self.prediction_history:
-            timeline = prediction.timeline
-            timeline_counts[timeline] = timeline_counts.get(timeline, 0) + 1
-        
-        # Prediction type analysis
-        type_counts = {}
-        for prediction in self.prediction_history:
-            pred_type = prediction.prediction_type.value
-            type_counts[pred_type] = type_counts.get(pred_type, 0) + 1
-        
-        insights = {
-            "total_predictions": total_predictions,
-            "average_confidence": avg_confidence,
-            "average_probability": avg_probability,
-            "timeline_distribution": timeline_counts,
-            "prediction_type_distribution": type_counts,
-            "quantum_coherence": self.quantum_state.get_coherence(),
-            "fractal_patterns": len(self.fractal_patterns),
-            "oracle_accuracy": self._calculate_accuracy(),
-            "prediction_horizon": self.prediction_horizon,
-            "confidence_threshold": self.confidence_threshold
+        return {
+            "total_predictions": len(self.prediction_history),
+            "timeline_count": len(self.timelines),
+            "quantum_seeds_generated": len(self.quantum_randomness.seed_history),
+            "cause_effect_nodes": len(self.cause_effect_graph.nodes),
+            "cause_effect_edges": len(self.cause_effect_graph.graph.edges),
+            "average_confidence": np.mean([p.confidence for p in self.prediction_history]) if self.prediction_history else 0.0,
+            "average_probability": np.mean([p.probability for p in self.prediction_history]) if self.prediction_history else 0.0,
+            "prediction_accuracy": self._calculate_accuracy(),
+            "timeline_branches": {
+                name: {
+                    "probability": branch.get_branch_probability(),
+                    "depth": branch.get_branch_depth(),
+                    "fork_count": branch.fork_count
+                } for name, branch in self.timelines.items()
+            }
         }
-        
-        return insights
     
     def _calculate_accuracy(self) -> float:
-        """Calculate Oracle accuracy (simplified)"""
-        if len(self.prediction_history) < 10:
-            return 0.5  # Default accuracy for insufficient data
+        """Calculate prediction accuracy (placeholder)"""
+        if not self.prediction_history:
+            return 0.0
         
-        # Use confidence as proxy for accuracy
-        recent_predictions = self.prediction_history[-10:]
-        avg_confidence = np.mean([p.confidence for p in recent_predictions])
-        
-        return min(1.0, avg_confidence * 1.2)  # Slight boost to confidence
+        # Simple accuracy based on confidence
+        return np.mean([p.confidence for p in self.prediction_history])
     
     def save_predictions(self, filepath: str):
-        """Save prediction history to file"""
+        """Save predictions to file"""
         predictions_data = [pred.to_dict() for pred in self.prediction_history]
         
         with open(filepath, 'w') as f:
             json.dump(predictions_data, f, indent=2)
     
     def load_predictions(self, filepath: str):
-        """Load prediction history from file"""
+        """Load predictions from file"""
         with open(filepath, 'r') as f:
             predictions_data = json.load(f)
         
@@ -530,6 +739,8 @@ class OracleEngine:
                 confidence=pred_data["confidence"],
                 timeline=pred_data["timeline"],
                 timestamp=datetime.fromisoformat(pred_data["timestamp"]),
-                details=pred_data["details"]
+                quantum_seed=pred_data.get("quantum_seed"),
+                causal_chain=pred_data.get("causal_chain"),
+                details=pred_data.get("details", {})
             )
             self.prediction_history.append(prediction) 
